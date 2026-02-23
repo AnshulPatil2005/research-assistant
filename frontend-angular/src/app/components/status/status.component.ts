@@ -2,7 +2,7 @@ import { Component, inject, signal, input, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
-import { TaskStatus } from '../../models/api.models';
+import { TaskProcessingInfo, TaskResult, TaskStatus } from '../../models/api.models';
 
 @Component({
   selector: 'app-status',
@@ -37,6 +37,26 @@ import { TaskStatus } from '../../models/api.models';
               {{ result()!.status }}
             </span>
           </div>
+
+          @if (ocrDetails(); as ocr) {
+            <div class="ocr-meta">
+              <div class="ocr-row">
+                <span class="ocr-key">OCR Mode:</span>
+                <span class="ocr-value">{{ formatOcrMode(ocr.ocr_mode) }}</span>
+              </div>
+              <div class="ocr-row">
+                <span class="ocr-key">Extraction Mode:</span>
+                <span class="ocr-value">{{ formatIngestionMode(ocr.ingestion_mode) }}</span>
+              </div>
+              <div class="ocr-row">
+                <span class="ocr-key">OCR Status:</span>
+                <span class="ocr-value" [class.ocr-skipped]="ocr.ocr_skipped">
+                  {{ getOcrStatusText(ocr) }}
+                </span>
+              </div>
+            </div>
+          }
+
           <pre>{{ result() | json }}</pre>
         </div>
       }
@@ -150,6 +170,40 @@ import { TaskStatus } from '../../models/api.models';
       gap: 0.75rem;
     }
 
+    .ocr-meta {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+
+    .ocr-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.875rem;
+    }
+
+    .ocr-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .ocr-key {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .ocr-value {
+      color: #1f1f1f;
+    }
+
+    .ocr-skipped {
+      color: #8a5a00;
+      font-weight: 600;
+    }
+
     .status-label {
       font-weight: 500;
       color: #444;
@@ -174,7 +228,8 @@ import { TaskStatus } from '../../models/api.models';
     }
 
     .status-badge.pending,
-    .status-badge.started {
+    .status-badge.started,
+    .status-badge.processing {
       background: #ffc107;
       color: #1a1a1a;
     }
@@ -228,6 +283,64 @@ export class StatusComponent {
     const status = this.result()?.status;
     if (status === 'SUCCESS') return 'success';
     if (status === 'FAILURE') return 'error';
+    if (status === 'PROCESSING') return 'info';
     return 'pending';
+  }
+
+  ocrDetails(): TaskProcessingInfo | TaskResult | null {
+    const status = this.result();
+    if (!status) return null;
+
+    if (status.info && this.hasOcrFields(status.info)) {
+      return status.info;
+    }
+
+    if (status.result && typeof status.result === 'object') {
+      const completed = status.result as TaskResult;
+      if (this.hasOcrFields(completed)) {
+        return completed;
+      }
+    }
+
+    return null;
+  }
+
+  private hasOcrFields(payload: TaskProcessingInfo | TaskResult): boolean {
+    return (
+      payload.ocr_mode !== undefined ||
+      payload.ocr_used !== undefined ||
+      payload.ocr_skipped !== undefined ||
+      payload.ocr_skip_reason !== undefined ||
+      payload.ingestion_mode !== undefined
+    );
+  }
+
+  formatOcrMode(mode?: string): string {
+    if (!mode) return 'Auto';
+    if (mode === 'always') return 'Always OCR';
+    if (mode === 'never') return 'Never OCR';
+    return 'Auto';
+  }
+
+  formatIngestionMode(mode?: string): string {
+    if (mode === 'ocr') return 'OCR';
+    if (mode === 'digital_text') return 'Digital Text';
+    return 'Unknown';
+  }
+
+  getOcrStatusText(payload: TaskProcessingInfo | TaskResult): string {
+    if (payload.ocr_skipped) {
+      return `Skipped${payload.ocr_skip_reason ? ` (${this.formatSkipReason(payload.ocr_skip_reason)})` : ''}`;
+    }
+    if (payload.ocr_used) {
+      return 'Used';
+    }
+    return 'Unknown';
+  }
+
+  private formatSkipReason(reason: string): string {
+    if (reason === 'digital_pdf_detected') return 'digital PDF detected';
+    if (reason === 'ocr_disabled_by_request') return 'OCR disabled by request';
+    return reason;
   }
 }

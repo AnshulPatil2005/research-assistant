@@ -1,14 +1,42 @@
+export type OcrMode = 'auto' | 'always' | 'never';
+
 export interface UploadResponse {
   message: string;
   task_id?: string;
   doc_id?: string;
+  ocr_mode?: OcrMode;
   detail?: string;
+}
+
+export interface TaskProcessingInfo {
+  step?: string;
+  doc_id?: string;
+  ocr_mode?: OcrMode;
+  ocr_used?: boolean;
+  ocr_skipped?: boolean;
+  ocr_skip_reason?: string;
+  ingestion_mode?: 'ocr' | 'digital_text';
+  pdf_type?: string;
+}
+
+export interface TaskResult {
+  status?: string;
+  doc_id?: string;
+  chunks_count?: number;
+  claims_count?: number;
+  ocr_mode?: OcrMode;
+  ocr_used?: boolean;
+  ocr_skipped?: boolean;
+  ocr_skip_reason?: string;
+  ingestion_mode?: 'ocr' | 'digital_text';
+  pdf_type?: string;
 }
 
 export interface TaskStatus {
   task_id: string;
-  status: 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE';
-  result?: unknown;
+  status: 'PENDING' | 'STARTED' | 'PROCESSING' | 'SUCCESS' | 'FAILURE';
+  info?: TaskProcessingInfo;
+  result?: TaskResult | Record<string, unknown>;
   error?: string;
 }
 

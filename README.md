@@ -27,6 +27,15 @@ User Query → Embedding Model → Vector search → Top K chunks retrieved
 1. **Embedding Model** (local, free) - Converts text into vectors for semantic search
 2. **LLM Model** (local or cloud) - Generates natural language answers from retrieved context
 
+## Research Features
+
+- **Section-Aware Parsing**: OCR text is labeled into canonical sections (Abstract, Methods, Results, Limitations, etc.) and chunked while preserving section boundaries.
+- **Citation-Aware Question Answering**: Chat answers are generated from retrieved evidence only, with inline `[Page X, Section Y]` references and quote-first prompting.
+- **Paper-at-a-Glance Summary**: `/api/v1/summary/{doc_id}` produces a structured overview of Problem, Method, Key Results, and Limitations.
+- **Claim Extraction and Indexing**: Worker extracts atomic claims and stores typed claim metadata (`method`, `result`, `assumption`) for precise retrieval.
+- **Table Extraction and Table-Aware Retrieval**: Tables are indexed as raw markdown, normalized row statements, and metric facts for quantitative queries.
+- **Optional OCR for Digital PDFs**: Upload supports `ocr_mode` (`auto`, `always`, `never`). In `auto`, OCR is skipped for digital PDFs and status reports the skip.
+
 ## Requirements
 
 - Docker & Docker Compose (for backend)
@@ -142,6 +151,8 @@ EMBEDDING_MODEL=all-MiniLM-L6-v2
 
 # Optional: RAG tuning
 RAG_TOP_K=5                      # Number of chunks to retrieve
+SUMMARY_TOP_K_PER_SECTION=8      # Chunks per section family for /summary
+SUMMARY_FALLBACK_TOP_K=15        # Fallback chunks when sections are missing
 CHUNK_TOKENS=500                 # Size of text chunks
 CHUNK_OVERLAP_TOKENS=50          # Overlap between chunks
 ```
@@ -277,12 +288,19 @@ All endpoints are prefixed with `/api/v1`:
 | `/api/v1/upload` | POST | Upload a PDF for processing |
 | `/api/v1/status/{task_id}` | GET | Check processing status |
 | `/api/v1/chat` | POST | Query documents with natural language |
+| `/api/v1/summary/{doc_id}` | GET | Structured paper-at-a-glance summary |
 
 ### Example API Calls
 
 **Upload PDF:**
 ```bash
 curl -X POST "http://localhost:8000/api/v1/upload" \
+  -F "file=@document.pdf"
+```
+
+**Upload PDF with OCR mode:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/upload?ocr_mode=auto" \
   -F "file=@document.pdf"
 ```
 
@@ -295,7 +313,14 @@ curl "http://localhost:8000/api/v1/status/{task_id}"
 ```bash
 curl -X POST "http://localhost:8000/api/v1/chat" \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is this document about?", "doc_id": "optional-doc-id"}'
+  -d '{
+    "query": "What are the main quantitative results?",
+    "doc_id": "optional-doc-id",
+    "sections": ["Results", "Limitations"],
+    "is_table": true,
+    "table_variant": "metric_fact",
+    "is_claim": false
+  }'
 ```
 
 ## Development

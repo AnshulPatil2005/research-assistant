@@ -13,21 +13,6 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Enable if GPU is available
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
   api:
     build: .
     command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -68,7 +53,6 @@ services:
 volumes:
   redis_data:
   qdrant_data:
-  ollama_data:
   uploads_data:
   torch_cache:
   huggingface_cache:

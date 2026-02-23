@@ -8,7 +8,8 @@ import {
   ChatResponse,
   SummaryResponse,
   RecentTask,
-  HealthStatus
+  HealthStatus,
+  OcrMode
 } from '../models/api.models';
 
 const STORAGE_KEY = 'rag_recent_tasks';
@@ -67,11 +68,18 @@ export class ApiService {
     });
   }
 
-  uploadPdf(file: File, force: boolean = false): Observable<UploadResponse> {
+  uploadPdf(file: File, force: boolean = false, ocrMode: OcrMode = 'auto'): Observable<UploadResponse> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const url = `${this.apiUrl()}/api/v1/upload${force ? '?force=true' : ''}`;
+    const queryParams = new URLSearchParams();
+    if (force) {
+      queryParams.set('force', 'true');
+    }
+    queryParams.set('ocr_mode', ocrMode);
+
+    const queryString = queryParams.toString();
+    const url = `${this.apiUrl()}/api/v1/upload${queryString ? `?${queryString}` : ''}`;
 
     return this.http.post<UploadResponse>(url, formData).pipe(
       tap(response => {

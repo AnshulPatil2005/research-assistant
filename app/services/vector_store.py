@@ -3,6 +3,7 @@ from qdrant_client.http import models
 from app.core.config import settings
 import structlog
 import uuid
+from typing import Optional, List
 
 logger = structlog.get_logger()
 
@@ -67,7 +68,18 @@ def upsert_vectors(collection_name: str, embeddings_data: list):
         )
         logger.info(f"Upserted {len(points)} points to {collection_name}")
 
-def search_vectors(query_vector: list = None, top_k: int = 5, doc_id: str = None, section: str = None, is_claim: bool = None, is_table: bool = None):
+def search_vectors(
+    query_vector: list = None,
+    top_k: int = 5,
+    doc_id: str = None,
+    section: str = None,
+    sections: Optional[List[str]] = None,
+    section_bucket: str = None,
+    is_claim: bool = None,
+    claim_type: str = None,
+    is_table: bool = None,
+    table_variant: str = None,
+):
     client = get_client()
     collection_name = settings.QDRANT_COLLECTION_NAME
     
@@ -76,14 +88,24 @@ def search_vectors(query_vector: list = None, top_k: int = 5, doc_id: str = None
         must_filters.append(models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id)))
     if section:
         must_filters.append(models.FieldCondition(key="section", match=models.MatchValue(value=section)))
+    if sections:
+        must_filters.append(
+            models.FieldCondition(key="section", match=models.MatchAny(any=sections))
+        )
+    if section_bucket:
+        must_filters.append(models.FieldCondition(key="section_bucket", match=models.MatchValue(value=section_bucket)))
     if is_claim is not None:
         must_filters.append(models.FieldCondition(key="is_claim", match=models.MatchValue(value=is_claim)))
+    if claim_type:
+        must_filters.append(models.FieldCondition(key="claim_type", match=models.MatchValue(value=claim_type)))
     if is_table is not None:
         must_filters.append(models.FieldCondition(key="is_table", match=models.MatchValue(value=is_table)))
+    if table_variant:
+        must_filters.append(models.FieldCondition(key="table_variant", match=models.MatchValue(value=table_variant)))
         
     query_filter = models.Filter(must=must_filters) if must_filters else None
     
-    if query_vector:
+    if query_vector is not None:
         results = client.search(
             collection_name=collection_name,
             query_vector=query_vector,

@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 import structlog
 
@@ -9,6 +8,12 @@ _model = None
 def get_model():
     global _model
     if _model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as exc:
+            raise RuntimeError(
+                "sentence-transformers is required to load embedding models."
+            ) from exc
         logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
         _model = SentenceTransformer(settings.EMBEDDING_MODEL)
     return _model

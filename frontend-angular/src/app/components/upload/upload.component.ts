@@ -2,7 +2,7 @@ import { Component, inject, signal, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
-import { UploadResponse } from '../../models/api.models';
+import { OcrMode, UploadResponse } from '../../models/api.models';
 
 @Component({
   selector: 'app-upload',
@@ -48,6 +48,18 @@ import { UploadResponse } from '../../models/api.models';
         </label>
       </div>
 
+      <div class="form-group">
+        <label class="field-label" for="ocrModeSelect">OCR Mode</label>
+        <select id="ocrModeSelect" class="select" [(ngModel)]="ocrMode">
+          <option value="auto">Auto (skip OCR for digital PDFs)</option>
+          <option value="always">Always OCR</option>
+          <option value="never">Never OCR (embedded text only)</option>
+        </select>
+        <p class="field-help">
+          Auto mode detects digital PDFs and skips OCR to speed up processing.
+        </p>
+      </div>
+
       <button
         class="btn btn-primary"
         (click)="upload()"
@@ -88,6 +100,37 @@ import { UploadResponse } from '../../models/api.models';
 
     .form-group {
       margin-bottom: 1rem;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 0.375rem;
+      color: #333;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .field-help {
+      margin: 0.375rem 0 0;
+      color: #666;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+
+    .select {
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      color: #1a1a1a;
+      font-size: 0.9375rem;
+      box-sizing: border-box;
+    }
+
+    .select:focus {
+      outline: none;
+      border-color: #333;
     }
 
     .file-drop-zone {
@@ -248,6 +291,7 @@ export class UploadComponent {
   selectedFile = signal<File | null>(null);
   isDragover = signal(false);
   forceUpload = false;
+  ocrMode: OcrMode = 'auto';
   isLoading = signal(false);
   result = signal<{ message: string; type: string; data?: UploadResponse; taskId?: string } | null>(null);
 
@@ -302,7 +346,7 @@ export class UploadComponent {
     this.isLoading.set(true);
     this.result.set({ message: 'Uploading...', type: 'info' });
 
-    this.apiService.uploadPdf(file, this.forceUpload).subscribe({
+    this.apiService.uploadPdf(file, this.forceUpload, this.ocrMode).subscribe({
       next: (response) => {
         this.isLoading.set(false);
         this.result.set({
