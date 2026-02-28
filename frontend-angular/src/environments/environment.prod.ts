@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://docrag-2gvg.onrender.com'
+  apiUrl: 'http://localhost:8000'
 };

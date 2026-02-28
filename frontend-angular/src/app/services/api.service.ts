@@ -14,7 +14,7 @@ import {
 
 const STORAGE_KEY = 'rag_recent_tasks';
 const API_URL_KEY = 'apiUrl';
-const DEFAULT_API_URL = 'https://docrag-2gvg.onrender.com';
+const DEFAULT_API_URL = 'http://localhost:8000';
 const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
 
 @Injectable({

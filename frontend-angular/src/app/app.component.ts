@@ -39,7 +39,7 @@ import { RecentTasksComponent } from './components/recent-tasks/recent-tasks.com
     </main>
 
     <footer class="footer">
-      <p>DocRAG - Document Retrieval-Augmented Generation</p>
+      <p>Research Assistant - AI-Powered Research & Document Analysis</p>
     </footer>
   `,
   styles: [`

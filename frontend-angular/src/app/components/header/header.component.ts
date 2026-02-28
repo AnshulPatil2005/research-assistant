@@ -10,8 +10,8 @@ import { ApiService } from '../../services/api.service';
   template: `
     <header class="header">
       <div class="header-content">
-        <h1>DocRAG</h1>
-        <p class="subtitle">Document Retrieval-Augmented Generation</p>
+        <h1>Research Assistant</h1>
+        <p class="subtitle">AI-Powered Research & Document Analysis</p>
       </div>
       <div class="header-controls">
         <div class="api-url-input">
@@ -21,7 +21,7 @@ import { ApiService } from '../../services/api.service';
             id="apiUrl"
             [ngModel]="apiService.apiUrl()"
             (ngModelChange)="onApiUrlChange($event)"
-            placeholder="https://docrag-2gvg.onrender.com"
+            placeholder="http://localhost:8000"
           />
         </div>
         <div class="status-indicator" [class.online]="apiService.healthStatus().online">
