@@ -18,6 +18,7 @@ import { RecentTasksComponent } from './components/recent-tasks/recent-tasks.com
     RecentTasksComponent
   ],
   template: `
+    <div class="top-bar"></div>
     <app-header />
 
     <main class="main-content">
@@ -39,7 +40,7 @@ import { RecentTasksComponent } from './components/recent-tasks/recent-tasks.com
     </main>
 
     <footer class="footer">
-      <p>Research Assistant - AI-Powered Research & Document Analysis</p>
+      <p>Research Assistant &mdash; AI-Powered Research & Document Analysis</p>
     </footer>
   `,
   styles: [`
@@ -49,14 +50,20 @@ import { RecentTasksComponent } from './components/recent-tasks/recent-tasks.com
       min-height: 100vh;
     }
 
+    .top-bar {
+      height: 3px;
+      background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+      flex-shrink: 0;
+    }
+
     .main-content {
       flex: 1;
-      background: #f5f5f5;
+      background: #f3f4f6;
       padding: 2rem;
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
     }
 
@@ -74,15 +81,15 @@ import { RecentTasksComponent } from './components/recent-tasks/recent-tasks.com
 
     .footer {
       background: #fff;
-      border-top: 1px solid #e0e0e0;
+      border-top: 1px solid #e5e7eb;
       padding: 1rem 2rem;
       text-align: center;
     }
 
     .footer p {
       margin: 0;
-      color: #666;
-      font-size: 0.875rem;
+      color: #9ca3af;
+      font-size: 0.8125rem;
     }
 
     @media (max-width: 900px) {

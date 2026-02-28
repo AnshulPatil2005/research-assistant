@@ -1,4 +1,7 @@
 export type OcrMode = 'auto' | 'always' | 'never';
+export type SectionBucket = 'problem' | 'method' | 'results' | 'limitations' | 'other';
+export type ClaimType = 'method' | 'result' | 'assumption';
+export type TableVariant = 'raw_markdown' | 'normalized_row' | 'metric_fact';
 
 export interface UploadResponse {
   message: string;
@@ -44,17 +47,25 @@ export interface Citation {
   filename?: string;
   page?: number;
   section?: string;
+  section_bucket?: SectionBucket;
   doc_id?: string;
   text_snippet: string;
   is_table?: boolean;
   is_claim?: boolean;
+  claim_type?: ClaimType;
+  table_variant?: TableVariant;
+  content_type?: string;
 }
 
 export interface ChatRequest {
   query: string;
   doc_id?: string;
+  section?: string;
+  section_bucket?: SectionBucket;
   is_claim?: boolean;
+  claim_type?: ClaimType;
   is_table?: boolean;
+  table_variant?: TableVariant;
 }
 
 export interface ChatResponse {
