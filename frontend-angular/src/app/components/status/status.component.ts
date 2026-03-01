@@ -1,115 +1,132 @@
-import { Component, inject, signal, input, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component, OnDestroy, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService } from '../../services/api.service';
 import { TaskProcessingInfo, TaskResult, TaskStatus } from '../../models/api.models';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-status',
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="card">
+    <section class="card">
       <div class="card-header">
-        <div class="section-icon">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
+        <div>
+          <span class="eyebrow">Step 2</span>
+          <h2>Watch the ingestion pipeline</h2>
+          <p class="intro">
+            Paste a task ID or let uploads feed this panel automatically. While a job is active,
+            the component polls in the background so the demo keeps moving without manual refresh.
+          </p>
         </div>
-        <h2>Task Status</h2>
+
+        <div class="live-badge" [class.active]="isLive()">
+          <span class="live-dot"></span>
+          {{ isLive() ? 'Auto-refreshing' : 'Idle' }}
+        </div>
       </div>
 
-      <div class="form-group">
+      <div class="controls">
         <input
           type="text"
           [(ngModel)]="taskId"
-          placeholder="Enter task ID from upload"
-          class="input"
+          placeholder="Paste task ID"
+          class="task-input"
         />
+
+        <button
+          class="check-btn"
+          (click)="checkStatus()"
+          [disabled]="!taskId || isLoading()"
+          type="button"
+        >
+          @if (isLoading()) {
+            <span class="spinner"></span>
+            Checking
+          } @else {
+            Check status
+          }
+        </button>
       </div>
 
-      <button
-        class="btn btn-secondary"
-        (click)="checkStatus()"
-        [disabled]="!taskId || isLoading()"
-      >
-        @if (isLoading()) {
-          <span class="btn-spinner dark"></span>Checking...
-        } @else {
-          Check Status
-        }
-      </button>
-
       @if (result()) {
-        <div class="result" [class]="getResultClass()">
-          <div class="status-header">
-            <span class="status-label">Status</span>
-            <span class="status-badge" [class]="result()!.status.toLowerCase()">
-              {{ result()!.status }}
-            </span>
+        <div class="result-card" [ngClass]="getResultClass()">
+          <div class="status-row">
+            <div>
+              <span class="meta-label">Pipeline status</span>
+              <div class="status-title-row">
+                <strong>{{ result()!.status }}</strong>
+                <span class="status-badge" [ngClass]="result()!.status.toLowerCase()">
+                  {{ statusTone(result()!.status) }}
+                </span>
+              </div>
+            </div>
+
+            <div class="task-id-badge">
+              <span>Task</span>
+              <code>{{ truncate(result()!.task_id) }}</code>
+            </div>
           </div>
+
+          @if (result()!.status === 'PROCESSING' || result()!.status === 'STARTED' || result()!.status === 'PENDING') {
+            <div class="processing-card">
+              <span class="spinner amber"></span>
+              <div>
+                <strong>{{ result()!.info?.step || 'Processing document and building retrieval assets.' }}</strong>
+                <p>The panel will refresh automatically every few seconds until the task completes.</p>
+              </div>
+            </div>
+          }
 
           @if (result()!.status === 'SUCCESS') {
             <div class="stats-grid">
               @if (getTaskResult()?.doc_id) {
                 <div class="stat-box">
-                  <span class="stat-label">Doc ID</span>
-                  <code class="stat-val">{{ truncate(getTaskResult()!.doc_id!) }}</code>
+                  <span class="meta-label">Doc ID</span>
+                  <code>{{ truncate(getTaskResult()!.doc_id!) }}</code>
                 </div>
               }
               @if (getTaskResult()?.chunks_count !== undefined && getTaskResult()?.chunks_count !== null) {
                 <div class="stat-box">
-                  <span class="stat-label">Chunks</span>
-                  <span class="stat-num">{{ getTaskResult()!.chunks_count }}</span>
+                  <span class="meta-label">Chunks</span>
+                  <strong>{{ getTaskResult()!.chunks_count }}</strong>
                 </div>
               }
               @if (getTaskResult()?.claims_count !== undefined && getTaskResult()?.claims_count !== null) {
                 <div class="stat-box">
-                  <span class="stat-label">Claims</span>
-                  <span class="stat-num">{{ getTaskResult()!.claims_count }}</span>
+                  <span class="meta-label">Claims</span>
+                  <strong>{{ getTaskResult()!.claims_count }}</strong>
                 </div>
               }
               @if (getTaskResult()?.pdf_type) {
                 <div class="stat-box">
-                  <span class="stat-label">PDF Type</span>
-                  <span class="stat-val">{{ getTaskResult()!.pdf_type }}</span>
+                  <span class="meta-label">PDF Type</span>
+                  <strong>{{ getTaskResult()!.pdf_type }}</strong>
                 </div>
               }
             </div>
           }
 
           @if (result()!.status === 'FAILURE' && result()!.error) {
-            <div class="error-detail">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {{ result()!.error }}
-            </div>
-          }
-
-          @if (result()!.status === 'PROCESSING' || result()!.status === 'STARTED' || result()!.status === 'PENDING') {
-            <div class="processing-row">
-              <span class="processing-spinner"></span>
-              <span>{{ result()!.info?.step || 'Processing document...' }}</span>
+            <div class="error-box">
+              <span class="meta-label">Failure reason</span>
+              <p>{{ result()!.error }}</p>
             </div>
           }
 
           @if (ocrDetails(); as ocr) {
-            <div class="ocr-meta">
-              <div class="ocr-row">
-                <span class="ocr-key">OCR Mode</span>
-                <span class="ocr-value">{{ formatOcrMode(ocr.ocr_mode) }}</span>
+            <div class="ocr-grid">
+              <div class="ocr-box">
+                <span class="meta-label">OCR mode</span>
+                <strong>{{ formatOcrMode(ocr.ocr_mode) }}</strong>
               </div>
-              <div class="ocr-row">
-                <span class="ocr-key">Extraction</span>
-                <span class="ocr-value">{{ formatIngestionMode(ocr.ingestion_mode) }}</span>
+              <div class="ocr-box">
+                <span class="meta-label">Extraction path</span>
+                <strong>{{ formatIngestionMode(ocr.ingestion_mode) }}</strong>
               </div>
-              <div class="ocr-row">
-                <span class="ocr-key">OCR</span>
-                <span class="ocr-value" [class.ocr-skipped]="ocr.ocr_skipped">
-                  {{ getOcrStatusText(ocr) }}
-                </span>
+              <div class="ocr-box">
+                <span class="meta-label">OCR result</span>
+                <strong [class.warning]="ocr.ocr_skipped">{{ getOcrStatusText(ocr) }}</strong>
               </div>
             </div>
           }
@@ -117,293 +134,379 @@ import { TaskProcessingInfo, TaskResult, TaskStatus } from '../../models/api.mod
       }
 
       @if (error()) {
-        <div class="result error-card">
+        <div class="error-box standalone">
+          <span class="meta-label">Request error</span>
           <p>{{ error() }}</p>
         </div>
       }
-    </div>
+    </section>
   `,
   styles: [`
     .card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
       padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      border-radius: var(--radius-xl);
+      background: var(--color-panel);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      box-shadow: var(--surface-shadow-soft);
+      backdrop-filter: blur(18px);
     }
 
     .card-header {
       display: flex;
-      align-items: center;
-      gap: 0.625rem;
-      margin-bottom: 1.25rem;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
     }
 
-    .section-icon {
-      width: 28px;
-      height: 28px;
-      background: #eef2ff;
-      border-radius: 7px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #6366f1;
-      flex-shrink: 0;
+    .eyebrow {
+      display: inline-flex;
+      margin-bottom: 0.7rem;
+      color: var(--color-secondary);
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     h2 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #111827;
+      font-family: var(--font-display);
+      font-size: 1.85rem;
+      line-height: 1;
+      letter-spacing: -0.04em;
     }
 
-    .form-group {
-      margin-bottom: 1rem;
+    .intro {
+      margin: 0.7rem 0 0;
+      color: var(--color-muted);
+      line-height: 1.7;
+      max-width: 54ch;
     }
 
-    .input {
-      width: 100%;
-      padding: 0.5625rem 0.875rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-size: 0.9375rem;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      background: #f9fafb;
-      color: #111827;
-      box-sizing: border-box;
-    }
-
-    .input:focus {
-      outline: none;
-      border-color: #6366f1;
-      background: #fff;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
-    }
-
-    .btn {
-      padding: 0.5625rem 1.125rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-size: 0.9375rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
+    .live-badge {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.55rem;
+      padding: 0.55rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(18, 32, 58, 0.07);
+      color: var(--color-muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      white-space: nowrap;
     }
 
-    .btn:disabled {
-      opacity: 0.5;
+    .live-badge.active {
+      background: var(--color-success-soft);
+      color: var(--color-success);
+    }
+
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 5px rgba(18, 32, 58, 0.08);
+    }
+
+    .live-badge.active .live-dot {
+      animation: pulse 1.4s ease-in-out infinite;
+      box-shadow: 0 0 0 5px rgba(29, 138, 82, 0.12);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.85rem;
+      margin-top: 1.2rem;
+    }
+
+    .task-input {
+      min-height: 52px;
+      padding: 0.85rem 1rem;
+      border-radius: 18px;
+      border: 1px solid var(--color-border);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--color-ink);
+    }
+
+    .task-input:focus {
+      outline: none;
+      border-color: rgba(26, 145, 255, 0.28);
+      box-shadow: 0 0 0 4px rgba(26, 145, 255, 0.12);
+    }
+
+    .check-btn {
+      min-width: 152px;
+      min-height: 52px;
+      border: 0;
+      border-radius: 18px;
+      background: rgba(18, 32, 58, 0.08);
+      color: var(--color-ink);
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+    }
+
+    .check-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      background: rgba(18, 32, 58, 0.12);
+    }
+
+    .check-btn:disabled {
+      opacity: 0.55;
       cursor: not-allowed;
     }
 
-    .btn-secondary {
-      background: #f9fafb;
-      color: #374151;
-    }
-
-    .btn-secondary:hover:not(:disabled) {
-      background: #f3f4f6;
-      border-color: #d1d5db;
-    }
-
-    .btn-spinner {
-      width: 13px;
-      height: 13px;
-      border: 2px solid rgba(55, 65, 81, 0.2);
-      border-top-color: #374151;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+    .spinner {
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(18, 32, 58, 0.2);
+      border-top-color: currentColor;
+      border-radius: 999px;
+      animation: spin 0.75s linear infinite;
       flex-shrink: 0;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    .spinner.amber {
+      color: var(--color-warning);
     }
 
-    .result {
+    .result-card {
       margin-top: 1rem;
       padding: 1rem;
-      border-radius: 8px;
-      font-size: 0.9375rem;
+      border-radius: 24px;
+      border: 1px solid transparent;
     }
 
-    .result.success {
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+    .result-card.success {
+      background: var(--color-success-soft);
+      border-color: rgba(29, 138, 82, 0.14);
     }
 
-    .result.error {
-      background: #fef2f2;
-      border: 1px solid #fca5a5;
+    .result-card.error {
+      background: var(--color-danger-soft);
+      border-color: rgba(195, 58, 51, 0.14);
     }
 
-    .result.info {
-      background: #eff6ff;
-      border: 1px solid #93c5fd;
+    .result-card.info {
+      background: var(--color-secondary-soft);
+      border-color: rgba(26, 145, 255, 0.16);
     }
 
-    .result.pending {
-      background: #fefce8;
-      border: 1px solid #fde68a;
+    .result-card.pending {
+      background: var(--color-warning-soft);
+      border-color: rgba(165, 106, 24, 0.14);
     }
 
-    .error-card {
-      background: #fef2f2;
-      border: 1px solid #fca5a5;
-      color: #dc2626;
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
     }
 
-    .status-header {
+    .meta-label {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--color-muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .status-title-row {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.875rem;
+      gap: 0.65rem;
+      flex-wrap: wrap;
     }
 
-    .status-label {
-      font-weight: 500;
-      color: #6b7280;
-      font-size: 0.875rem;
+    .status-title-row strong {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      letter-spacing: -0.04em;
     }
 
     .status-badge {
-      padding: 0.2rem 0.625rem;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      padding: 0.45rem 0.7rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.1em;
+      background: rgba(18, 32, 58, 0.08);
+      color: var(--color-muted);
     }
 
     .status-badge.success {
-      background: #dcfce7;
-      color: #15803d;
+      background: rgba(29, 138, 82, 0.14);
+      color: var(--color-success);
     }
 
     .status-badge.failure {
-      background: #fee2e2;
-      color: #dc2626;
+      background: rgba(195, 58, 51, 0.14);
+      color: var(--color-danger);
     }
 
     .status-badge.pending,
     .status-badge.started,
     .status-badge.processing {
-      background: #fef3c7;
-      color: #92400e;
+      background: rgba(236, 168, 46, 0.18);
+      color: var(--color-warning);
     }
 
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.625rem;
-      margin-bottom: 0.875rem;
+    .task-id-badge {
+      min-width: 150px;
+      padding: 0.8rem;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(18, 32, 58, 0.08);
     }
 
-    .stat-box {
-      background: rgba(255, 255, 255, 0.7);
-      border: 1px solid rgba(0, 0, 0, 0.06);
-      border-radius: 8px;
-      padding: 0.625rem 0.75rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-
-    .stat-label {
-      font-size: 0.75rem;
-      font-weight: 500;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .stat-num {
-      font-size: 1.25rem;
+    .task-id-badge span {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--color-muted);
+      font-size: 0.74rem;
       font-weight: 700;
-      color: #111827;
-      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
 
-    .stat-val {
-      font-size: 0.8125rem;
-      font-family: var(--font-mono, monospace);
-      color: #374151;
-      word-break: break-all;
+    .task-id-badge code {
+      color: var(--color-ink);
+      word-break: break-word;
     }
 
-    .error-detail {
+    .processing-card {
       display: flex;
+      gap: 0.8rem;
       align-items: flex-start;
-      gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.6);
-      border-radius: 6px;
-      padding: 0.625rem 0.75rem;
-      color: #dc2626;
-      font-size: 0.875rem;
-      margin-bottom: 0.75rem;
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(165, 106, 24, 0.14);
     }
 
-    .processing-row {
-      display: flex;
-      align-items: center;
-      gap: 0.625rem;
-      font-size: 0.875rem;
-      color: #92400e;
-      margin-bottom: 0.75rem;
+    .processing-card strong {
+      display: block;
+      line-height: 1.5;
     }
 
-    .processing-spinner {
-      width: 13px;
-      height: 13px;
-      border: 2px solid rgba(146, 64, 14, 0.25);
-      border-top-color: #92400e;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      flex-shrink: 0;
+    .processing-card p {
+      margin: 0.35rem 0 0;
+      color: var(--color-muted);
+      line-height: 1.6;
     }
 
-    .ocr-meta {
-      background: rgba(255, 255, 255, 0.6);
-      border: 1px solid rgba(0, 0, 0, 0.06);
-      border-radius: 8px;
-      padding: 0.625rem 0.75rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
+    .stats-grid,
+    .ocr-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8rem;
+      margin-top: 1rem;
     }
 
-    .ocr-row {
-      display: flex;
-      gap: 0.625rem;
-      font-size: 0.8125rem;
+    .stat-box,
+    .ocr-box {
+      padding: 0.9rem;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(18, 32, 58, 0.08);
     }
 
-    .ocr-key {
-      font-weight: 600;
-      color: #374151;
-      min-width: 72px;
+    .stat-box strong,
+    .ocr-box strong {
+      color: var(--color-ink);
+      font-size: 1rem;
     }
 
-    .ocr-value {
-      color: #374151;
+    .stat-box code {
+      color: var(--color-ink);
+      word-break: break-word;
     }
 
-    .ocr-skipped {
-      color: #92400e;
-      font-weight: 600;
+    .warning {
+      color: var(--color-warning);
+    }
+
+    .error-box {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 22px;
+      background: var(--color-danger-soft);
+      border: 1px solid rgba(195, 58, 51, 0.14);
+    }
+
+    .error-box p {
+      margin: 0;
+      color: var(--color-danger);
+      line-height: 1.6;
+    }
+
+    .standalone {
+      margin-top: 1rem;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.45;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .card {
+        padding: 1.1rem;
+      }
+
+      .card-header,
+      .status-row {
+        flex-direction: column;
+      }
+
+      .controls,
+      .stats-grid,
+      .ocr-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .check-btn {
+        width: 100%;
+      }
+
+      .task-id-badge {
+        min-width: 0;
+        width: 100%;
+      }
     }
   `]
 })
-export class StatusComponent {
+export class StatusComponent implements OnDestroy {
   private apiService = inject(ApiService);
+  private pollingHandle: ReturnType<typeof setInterval> | null = null;
 
   initialTaskId = input<string>('');
 
   taskId = '';
   isLoading = signal(false);
+  isLive = signal(false);
   result = signal<TaskStatus | null>(null);
   error = signal<string | null>(null);
 
@@ -417,26 +520,33 @@ export class StatusComponent {
     });
   }
 
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
   setTaskId(id: string): void {
     this.taskId = id;
     this.checkStatus();
   }
 
-  checkStatus(): void {
+  checkStatus(background = false): void {
     if (!this.taskId) return;
 
     this.isLoading.set(true);
-    this.result.set(null);
-    this.error.set(null);
+    if (!background) {
+      this.error.set(null);
+    }
 
     this.apiService.getTaskStatus(this.taskId).subscribe({
       next: (response) => {
         this.isLoading.set(false);
         this.result.set(response);
+        this.syncPolling(response.status);
       },
       error: (err) => {
         this.isLoading.set(false);
         this.error.set(`Error: ${err.message}`);
+        this.stopPolling();
       }
     });
   }
@@ -449,42 +559,39 @@ export class StatusComponent {
     return 'pending';
   }
 
+  statusTone(status: TaskStatus['status']): string {
+    if (status === 'SUCCESS') return 'Complete';
+    if (status === 'FAILURE') return 'Needs attention';
+    if (status === 'PROCESSING') return 'In progress';
+    return 'Queued';
+  }
+
   getTaskResult(): TaskResult | null {
-    const r = this.result()?.result;
-    if (!r) return null;
-    return r as TaskResult;
+    const current = this.result()?.result;
+    if (!current) return null;
+    return current as TaskResult;
   }
 
   truncate(id: string): string {
-    return id.length > 20 ? id.substring(0, 8) + '...' + id.substring(id.length - 4) : id;
+    return id.length > 20 ? `${id.substring(0, 8)}...${id.substring(id.length - 4)}` : id;
   }
 
   ocrDetails(): TaskProcessingInfo | TaskResult | null {
-    const status = this.result();
-    if (!status) return null;
+    const current = this.result();
+    if (!current) return null;
 
-    if (status.info && this.hasOcrFields(status.info)) {
-      return status.info;
+    if (current.info && this.hasOcrFields(current.info)) {
+      return current.info;
     }
 
-    if (status.result && typeof status.result === 'object') {
-      const completed = status.result as TaskResult;
+    if (current.result && typeof current.result === 'object') {
+      const completed = current.result as TaskResult;
       if (this.hasOcrFields(completed)) {
         return completed;
       }
     }
 
     return null;
-  }
-
-  private hasOcrFields(payload: TaskProcessingInfo | TaskResult): boolean {
-    return (
-      payload.ocr_mode !== undefined ||
-      payload.ocr_used !== undefined ||
-      payload.ocr_skipped !== undefined ||
-      payload.ocr_skip_reason !== undefined ||
-      payload.ingestion_mode !== undefined
-    );
   }
 
   formatOcrMode(mode?: string): string {
@@ -495,8 +602,8 @@ export class StatusComponent {
   }
 
   formatIngestionMode(mode?: string): string {
-    if (mode === 'ocr') return 'OCR';
-    if (mode === 'digital_text') return 'Digital Text';
+    if (mode === 'ocr') return 'OCR extraction';
+    if (mode === 'digital_text') return 'Digital text path';
     return 'Unknown';
   }
 
@@ -510,9 +617,48 @@ export class StatusComponent {
     return 'Unknown';
   }
 
+  private hasOcrFields(payload: TaskProcessingInfo | TaskResult): boolean {
+    return (
+      payload.ocr_mode !== undefined ||
+      payload.ocr_used !== undefined ||
+      payload.ocr_skipped !== undefined ||
+      payload.ocr_skip_reason !== undefined ||
+      payload.ingestion_mode !== undefined
+    );
+  }
+
   private formatSkipReason(reason: string): string {
     if (reason === 'digital_pdf_detected') return 'digital PDF detected';
-    if (reason === 'ocr_disabled_by_request') return 'OCR disabled by request';
+    if (reason === 'ocr_disabled_by_request') return 'disabled by request';
     return reason;
+  }
+
+  private syncPolling(status: TaskStatus['status']): void {
+    const shouldPoll = status === 'PENDING' || status === 'STARTED' || status === 'PROCESSING';
+
+    if (!shouldPoll) {
+      this.stopPolling();
+      return;
+    }
+
+    if (this.pollingHandle) {
+      this.isLive.set(true);
+      return;
+    }
+
+    this.isLive.set(true);
+    this.pollingHandle = setInterval(() => {
+      if (!this.isLoading()) {
+        this.checkStatus(true);
+      }
+    }, 4000);
+  }
+
+  private stopPolling(): void {
+    if (this.pollingHandle) {
+      clearInterval(this.pollingHandle);
+      this.pollingHandle = null;
+    }
+    this.isLive.set(false);
   }
 }

@@ -1,16 +1,16 @@
-import { Component, inject, signal, input, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService } from '../../services/api.service';
 import { ChatRequest, ChatResponse, ClaimType, SectionBucket, TableVariant } from '../../models/api.models';
+import { ApiService } from '../../services/api.service';
 
 type SearchMode = 'general' | 'claims' | 'tables';
 
 interface SummarySection {
   title: string;
   content: string;
-  color: 'blue' | 'violet' | 'green' | 'amber';
-  icon: string;
+  color: 'blue' | 'amber' | 'green' | 'rose';
+  index: string;
 }
 
 @Component({
@@ -18,257 +18,228 @@ interface SummarySection {
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="card">
+    <section class="card">
       <div class="card-header">
-        <div class="section-icon">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+        <div>
+          <span class="eyebrow">Step 3</span>
+          <h2>Ask grounded questions and summarize papers</h2>
+          <p class="intro">
+            Query across all documents or narrow the search to claims, tables, or section buckets.
+            Results stay presentation-friendly with source snippets and structured paper summaries.
+          </p>
         </div>
-        <h2>Chat / Query Documents</h2>
+
+        @if (docId) {
+          <div class="active-doc">
+            <span class="meta-label">Active doc</span>
+            <code>{{ truncateId(docId) }}</code>
+          </div>
+        }
       </div>
 
-      <!-- Search Mode Selector -->
-      <div class="mode-section">
-        <span class="mode-label">Search Mode</span>
-        <div class="mode-chips">
+      <div class="mode-panel">
+        <span class="meta-label">Search mode</span>
+        <div class="mode-row">
           <button
             class="mode-chip"
             [class.active]="searchMode() === 'general'"
             (click)="setMode('general')"
+            type="button"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            General
+            General QA
           </button>
           <button
             class="mode-chip"
             [class.active]="searchMode() === 'claims'"
             (click)="setMode('claims')"
-            title="Search only extracted research claims (methods, results, assumptions)"
+            type="button"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-            Claims
+            Claims focus
           </button>
           <button
             class="mode-chip"
             [class.active]="searchMode() === 'tables'"
             (click)="setMode('tables')"
-            title="Search only extracted tables and quantitative data"
+            type="button"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>
-              <line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>
-            </svg>
-            Tables
+            Tables focus
           </button>
         </div>
-        @if (searchMode() === 'claims') {
-          <p class="mode-hint">Searches only extracted research claims indexed from the document.</p>
-        }
-        @if (searchMode() === 'tables') {
-          <p class="mode-hint">Searches only extracted tables and quantitative results.</p>
+        <p class="mode-hint">{{ modeHint() }}</p>
+      </div>
+
+      <div class="prompt-row">
+        @for (prompt of quickPrompts(); track prompt) {
+          <button class="prompt-chip" (click)="applyPrompt(prompt)" type="button">{{ prompt }}</button>
         }
       </div>
 
-      <!-- Query Input -->
-      <div class="form-group">
+      <div class="composer">
+        <label class="composer-label" for="queryInput">Question</label>
         <textarea
+          id="queryInput"
           [(ngModel)]="query"
-          rows="3"
+          rows="4"
           [placeholder]="queryPlaceholder()"
           class="textarea"
         ></textarea>
       </div>
 
-      <!-- Filters Row -->
-      <div class="filters-row">
-        <div class="filter-item">
-          <label class="filter-label">Doc ID</label>
+      <div class="filter-grid">
+        <label class="filter-box">
+          <span class="meta-label">Document scope</span>
           <input
             type="text"
             [(ngModel)]="docId"
             placeholder="All documents"
-            class="filter-input"
           />
-        </div>
-        <div class="filter-item">
-          <label class="filter-label">Section</label>
-          <select class="filter-select" [(ngModel)]="sectionBucket">
+        </label>
+
+        <label class="filter-box">
+          <span class="meta-label">Section bucket</span>
+          <select [(ngModel)]="sectionBucket">
             <option value="">All sections</option>
-            <option value="problem">Problem (Abstract / Intro)</option>
+            <option value="problem">Problem</option>
             <option value="method">Method</option>
-            <option value="results">Key Results</option>
+            <option value="results">Key results</option>
             <option value="limitations">Limitations</option>
           </select>
-        </div>
+        </label>
       </div>
 
-      <!-- Mode-Specific Filters -->
       @if (searchMode() === 'claims') {
-        <div class="sub-filter-row">
-          <label class="filter-label">Claim Type</label>
-          <div class="sub-chips">
-            <button class="sub-chip" [class.active]="claimType === ''" (click)="claimType = ''">All</button>
-            <button class="sub-chip" [class.active]="claimType === 'method'" (click)="claimType = 'method'">Method</button>
-            <button class="sub-chip" [class.active]="claimType === 'result'" (click)="claimType = 'result'">Result</button>
-            <button class="sub-chip" [class.active]="claimType === 'assumption'" (click)="claimType = 'assumption'">Assumption</button>
+        <div class="subfilters">
+          <span class="meta-label">Claim type</span>
+          <div class="subfilter-row">
+            <button class="sub-chip" [class.active]="claimType === ''" (click)="claimType = ''" type="button">All</button>
+            <button class="sub-chip" [class.active]="claimType === 'method'" (click)="claimType = 'method'" type="button">Method</button>
+            <button class="sub-chip" [class.active]="claimType === 'result'" (click)="claimType = 'result'" type="button">Result</button>
+            <button class="sub-chip" [class.active]="claimType === 'assumption'" (click)="claimType = 'assumption'" type="button">Assumption</button>
           </div>
         </div>
       }
 
       @if (searchMode() === 'tables') {
-        <div class="sub-filter-row">
-          <label class="filter-label">Table Type</label>
-          <div class="sub-chips">
-            <button class="sub-chip" [class.active]="tableVariant === ''" (click)="tableVariant = ''">All</button>
-            <button class="sub-chip" [class.active]="tableVariant === 'raw_markdown'" (click)="tableVariant = 'raw_markdown'">Full Table</button>
-            <button class="sub-chip" [class.active]="tableVariant === 'normalized_row'" (click)="tableVariant = 'normalized_row'">Row Breakdown</button>
-            <button class="sub-chip" [class.active]="tableVariant === 'metric_fact'" (click)="tableVariant = 'metric_fact'">Metric Facts</button>
+        <div class="subfilters">
+          <span class="meta-label">Table type</span>
+          <div class="subfilter-row">
+            <button class="sub-chip" [class.active]="tableVariant === ''" (click)="tableVariant = ''" type="button">All</button>
+            <button class="sub-chip" [class.active]="tableVariant === 'raw_markdown'" (click)="tableVariant = 'raw_markdown'" type="button">Full table</button>
+            <button class="sub-chip" [class.active]="tableVariant === 'normalized_row'" (click)="tableVariant = 'normalized_row'" type="button">Rows</button>
+            <button class="sub-chip" [class.active]="tableVariant === 'metric_fact'" (click)="tableVariant = 'metric_fact'" type="button">Metric facts</button>
           </div>
         </div>
       }
 
-      <!-- Action Buttons -->
-      <div class="actions">
+      <div class="action-row">
         <button
-          class="btn btn-primary"
+          class="primary-btn"
           (click)="sendQuery()"
           [disabled]="!query || isLoading()"
+          type="button"
         >
           @if (isLoading()) {
-            <span class="btn-spinner"></span>Processing...
+            <span class="spinner light"></span>
+            Generating answer
           } @else {
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-            Send Query
+            Ask the assistant
           }
         </button>
 
         <button
-          class="btn btn-outline"
+          class="secondary-btn"
           (click)="getSummary()"
           [disabled]="!docId || isSummaryLoading()"
-          title="Generates a structured overview: Problem, Method, Key Results, Limitations"
+          type="button"
         >
           @if (isSummaryLoading()) {
-            <span class="btn-spinner dark"></span>Summarizing...
+            <span class="spinner"></span>
+            Building summary
           } @else {
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-              <line x1="8" y1="18" x2="21" y2="18"/>
-              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-            </svg>
-            Paper at a Glance
+            Paper at a glance
           }
         </button>
       </div>
 
-      <!-- Structured Summary (Feature 3: Paper-at-a-Glance) -->
       @if (summaryText()) {
-        <div class="summary-area">
-          <div class="result-label">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            Paper at a Glance
+        <div class="summary-block">
+          <div class="block-heading">
+            <span class="meta-label">Structured summary</span>
+            <strong>Paper at a glance</strong>
           </div>
 
           @if (parsedSummary().length > 0) {
             <div class="summary-grid">
               @for (sec of parsedSummary(); track sec.title) {
-                <div class="summary-card" [class]="'summary-' + sec.color">
-                  <div class="summary-card-title">
-                    <span class="summary-icon">{{ sec.icon }}</span>
-                    {{ sec.title }}
-                  </div>
-                  <div class="summary-card-body">{{ sec.content.trim() }}</div>
+                <div class="summary-card" [ngClass]="'summary-' + sec.color">
+                  <span class="summary-index">{{ sec.index }}</span>
+                  <h3>{{ sec.title }}</h3>
+                  <p>{{ sec.content.trim() }}</p>
                 </div>
               }
             </div>
           } @else {
-            <div class="summary-raw">{{ summaryText() }}</div>
+            <div class="raw-summary">{{ summaryText() }}</div>
           }
         </div>
       }
 
-      <!-- Answer (Feature 2: Citation-Aware QA) -->
       @if (result()) {
-        <div class="answer-area">
-          <div class="answer-block">
-            <div class="result-label">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              Answer
-              @if (searchMode() === 'claims') {
-                <span class="mode-tag claims">Claims Only</span>
-              }
-              @if (searchMode() === 'tables') {
-                <span class="mode-tag tables">Tables Only</span>
-              }
-              @if (sectionBucket) {
-                <span class="mode-tag section">{{ bucketLabel(sectionBucket) }}</span>
-              }
-            </div>
-            <div class="answer-text">{{ result()!.answer }}</div>
+        <div class="answer-block">
+          <div class="block-heading">
+            <span class="meta-label">Answer</span>
+            <strong>Citation-grounded response</strong>
           </div>
 
-          <!-- Citations (Feature 2: verbatim quotes + page/section) -->
+          <div class="answer-meta">
+            <span class="pill">{{ modePillLabel() }}</span>
+            @if (sectionBucket) {
+              <span class="pill">{{ bucketLabel(sectionBucket) }}</span>
+            }
+            @if (result()!.citations?.length) {
+              <span class="pill">{{ result()!.citations!.length }} sources</span>
+            }
+          </div>
+
+          <div class="answer-text">{{ result()!.answer }}</div>
+
           @if (result()!.citations && result()!.citations!.length > 0) {
-            <div class="citations-block">
-              <div class="result-label">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-                Sources ({{ result()!.citations!.length }})
-              </div>
+            <div class="citation-list">
               @for (citation of result()!.citations; track $index) {
-                <div class="citation" [class]="citationClass(citation)">
-                  <div class="citation-num">{{ $index + 1 }}</div>
+                <article class="citation-card" [ngClass]="citationClass(citation)">
+                  <div class="citation-index">{{ $index + 1 }}</div>
+
                   <div class="citation-body">
-                    <div class="citation-header">
-                      <span class="source-name">{{ citation.filename || 'Unknown' }}</span>
+                    <div class="citation-top">
+                      <strong>{{ citation.filename || 'Unknown source' }}</strong>
 
-                      <!-- Page + Section (Feature 1: section-aware) -->
-                      @if (citation.page) {
-                        <span class="page-tag">p.{{ citation.page }}{{ citation.section ? ' · ' + citation.section : '' }}</span>
-                      }
-
-                      <!-- Section Bucket (Feature 1) -->
-                      @if (citation.section_bucket) {
-                        <span class="bucket-tag" [class]="'bucket-' + citation.section_bucket">
-                          {{ bucketLabel(citation.section_bucket) }}
-                        </span>
-                      }
-
-                      <!-- Claim Type (Feature 4) -->
-                      @if (citation.is_claim && citation.claim_type) {
-                        <span class="type-tag claim-tag">{{ citation.claim_type | uppercase }}</span>
-                      } @else if (citation.is_claim) {
-                        <span class="type-tag claim-tag">CLAIM</span>
-                      }
-
-                      <!-- Table Variant (Feature 5) -->
-                      @if (citation.is_table && citation.table_variant) {
-                        <span class="type-tag table-tag">{{ tableVariantLabel(citation.table_variant) }}</span>
-                      } @else if (citation.is_table) {
-                        <span class="type-tag table-tag">TABLE</span>
-                      }
+                      <div class="citation-tags">
+                        @if (citation.page) {
+                          <span class="tag">p.{{ citation.page }}</span>
+                        }
+                        @if (citation.section_bucket) {
+                          <span class="tag">{{ bucketLabel(citation.section_bucket) }}</span>
+                        }
+                        @if (citation.is_claim && citation.claim_type) {
+                          <span class="tag claim">{{ citation.claim_type | uppercase }}</span>
+                        } @else if (citation.is_claim) {
+                          <span class="tag claim">CLAIM</span>
+                        }
+                        @if (citation.is_table && citation.table_variant) {
+                          <span class="tag table">{{ tableVariantLabel(citation.table_variant) }}</span>
+                        } @else if (citation.is_table) {
+                          <span class="tag table">TABLE</span>
+                        }
+                      </div>
                     </div>
 
                     @if (citation.doc_id) {
-                      <div class="doc-id">{{ truncateId(citation.doc_id) }}</div>
+                      <code class="doc-ref">{{ truncateId(citation.doc_id) }}</code>
                     }
-                    <div class="citation-text">"{{ citation.text_snippet }}"</div>
+
+                    <p class="citation-text">"{{ citation.text_snippet }}"</p>
                   </div>
-                </div>
+                </article>
               }
             </div>
           }
@@ -276,496 +247,470 @@ interface SummarySection {
       }
 
       @if (error()) {
-        <div class="error-card">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          {{ error() }}
+        <div class="error-box">
+          <span class="meta-label">Request error</span>
+          <p>{{ error() }}</p>
         </div>
       }
-    </div>
+    </section>
   `,
   styles: [`
     .card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
       padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      border-radius: var(--radius-xl);
+      background: var(--color-panel);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      box-shadow: var(--surface-shadow);
+      backdrop-filter: blur(18px);
     }
 
     .card-header {
       display: flex;
-      align-items: center;
-      gap: 0.625rem;
-      margin-bottom: 1.25rem;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
     }
 
-    .section-icon {
-      width: 28px;
-      height: 28px;
-      background: #eef2ff;
-      border-radius: 7px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #6366f1;
-      flex-shrink: 0;
+    .eyebrow {
+      display: inline-flex;
+      margin-bottom: 0.7rem;
+      color: var(--color-accent-deep);
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     h2 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #111827;
+      font-family: var(--font-display);
+      font-size: 2rem;
+      line-height: 1;
+      letter-spacing: -0.04em;
     }
 
-    /* ── Mode selector ─────────────────── */
-    .mode-section {
-      margin-bottom: 1rem;
+    .intro {
+      margin: 0.7rem 0 0;
+      max-width: 58ch;
+      color: var(--color-muted);
+      line-height: 1.7;
     }
 
-    .mode-label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.5rem;
-    }
-
-    .mode-chips {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .mode-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.4rem 0.875rem;
-      border: 1px solid #e5e7eb;
+    .active-doc {
+      min-width: 160px;
+      padding: 0.9rem 1rem;
       border-radius: 20px;
-      background: #f9fafb;
-      color: #6b7280;
-      font-size: 0.875rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
+      background: rgba(255, 255, 255, 0.75);
+      border: 1px solid var(--color-border);
     }
 
-    .mode-chip:hover {
-      border-color: #6366f1;
-      color: #6366f1;
-      background: #eef2ff;
+    .meta-label {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--color-muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .active-doc code,
+    .doc-ref {
+      color: var(--color-ink);
+      word-break: break-word;
+    }
+
+    .mode-panel {
+      margin-top: 1.2rem;
+      padding: 1rem;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--color-border);
+    }
+
+    .mode-row,
+    .prompt-row,
+    .subfilter-row,
+    .action-row,
+    .answer-meta,
+    .citation-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+    }
+
+    .mode-chip,
+    .prompt-chip,
+    .sub-chip,
+    .primary-btn,
+    .secondary-btn {
+      border: 0;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+
+    .mode-chip,
+    .prompt-chip,
+    .sub-chip {
+      padding: 0.7rem 0.95rem;
+      border-radius: 999px;
+      background: rgba(18, 32, 58, 0.06);
+      color: var(--color-muted);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .mode-chip:hover,
+    .prompt-chip:hover,
+    .sub-chip:hover,
+    .mode-chip.active,
+    .sub-chip.active {
+      transform: translateY(-2px);
+      background: var(--color-accent-soft);
+      color: var(--color-accent-deep);
     }
 
     .mode-chip.active {
-      background: #6366f1;
-      border-color: #6366f1;
-      color: #fff;
+      box-shadow: 0 12px 22px rgba(252, 92, 44, 0.14);
     }
 
     .mode-hint {
-      margin: 0.5rem 0 0;
-      font-size: 0.8125rem;
-      color: #6b7280;
-      font-style: italic;
+      margin: 0.8rem 0 0;
+      color: var(--color-muted);
+      line-height: 1.6;
     }
 
-    /* ── Inputs ────────────────────────── */
-    .form-group {
-      margin-bottom: 0.875rem;
+    .prompt-row {
+      margin-top: 0.9rem;
+    }
+
+    .composer {
+      margin-top: 1rem;
+    }
+
+    .composer-label {
+      display: inline-flex;
+      margin-bottom: 0.55rem;
+      color: var(--color-ink);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .textarea,
+    .filter-box input,
+    .filter-box select {
+      width: 100%;
+      border: 1px solid var(--color-border);
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--color-ink);
     }
 
     .textarea {
-      width: 100%;
-      padding: 0.5625rem 0.875rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-size: 0.9375rem;
-      font-family: inherit;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      background: #f9fafb;
-      color: #111827;
-      box-sizing: border-box;
+      min-height: 140px;
+      padding: 1rem;
+      border-radius: 22px;
       resize: vertical;
-      min-height: 80px;
+      line-height: 1.7;
     }
 
-    .textarea:focus {
+    .textarea:focus,
+    .filter-box input:focus,
+    .filter-box select:focus {
       outline: none;
-      border-color: #6366f1;
-      background: #fff;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+      border-color: rgba(252, 92, 44, 0.26);
+      box-shadow: 0 0 0 4px rgba(252, 92, 44, 0.1);
     }
 
-    .filters-row {
+    .filter-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.9rem;
+      margin-top: 1rem;
     }
 
-    .filter-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
+    .filter-box {
+      display: block;
+      padding: 0.95rem;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--color-border);
     }
 
-    .filter-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+    .filter-box input,
+    .filter-box select {
+      min-height: 48px;
+      margin-top: 0.3rem;
+      padding: 0.75rem 0.85rem;
+      border-radius: 16px;
     }
 
-    .filter-input, .filter-select {
-      padding: 0.4375rem 0.75rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 7px;
-      font-size: 0.875rem;
-      background: #f9fafb;
-      color: #111827;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      font-family: inherit;
+    .subfilters {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.64);
+      border: 1px solid var(--color-border);
     }
 
-    .filter-input:focus, .filter-select:focus {
-      outline: none;
-      border-color: #6366f1;
-      background: #fff;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    .action-row {
+      margin-top: 1rem;
     }
 
-    .sub-filter-row {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
-      flex-wrap: wrap;
-    }
-
-    .sub-chips {
-      display: flex;
-      gap: 0.375rem;
-      flex-wrap: wrap;
-    }
-
-    .sub-chip {
-      padding: 0.25rem 0.625rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      background: #f9fafb;
-      color: #6b7280;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .sub-chip:hover {
-      border-color: #6366f1;
-      color: #6366f1;
-    }
-
-    .sub-chip.active {
-      background: #eef2ff;
-      border-color: #6366f1;
-      color: #4f46e5;
-      font-weight: 600;
-    }
-
-    /* ── Action buttons ────────────────── */
-    .actions {
-      display: flex;
-      gap: 0.75rem;
-      margin-bottom: 0;
-    }
-
-    .btn {
-      padding: 0.5625rem 1rem;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
+    .primary-btn,
+    .secondary-btn {
+      min-height: 54px;
+      padding: 0 1.2rem;
+      border-radius: 18px;
+      font-weight: 700;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      justify-content: center;
+      gap: 0.6rem;
+      flex: 1;
     }
 
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: #6366f1;
+    .primary-btn {
+      background: linear-gradient(135deg, var(--color-accent) 0%, #ff8b53 100%);
       color: #fff;
-      flex: 1;
-      justify-content: center;
+      box-shadow: 0 18px 34px rgba(252, 92, 44, 0.22);
     }
 
-    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
-
-    .btn-outline {
-      background: #fff;
-      color: #374151;
-      border: 1px solid #e5e7eb;
-      flex: 1;
-      justify-content: center;
+    .secondary-btn {
+      background: rgba(18, 32, 58, 0.07);
+      color: var(--color-ink);
     }
 
-    .btn-outline:hover:not(:disabled) {
-      background: #f9fafb;
-      border-color: #d1d5db;
+    .primary-btn:hover:not(:disabled),
+    .secondary-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
     }
 
-    .btn-spinner {
-      width: 13px;
-      height: 13px;
-      border: 2px solid rgba(255, 255, 255, 0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+    .primary-btn:disabled,
+    .secondary-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(18, 32, 58, 0.2);
+      border-top-color: currentColor;
+      border-radius: 999px;
+      animation: spin 0.75s linear infinite;
       flex-shrink: 0;
     }
 
-    .btn-spinner.dark {
-      border-color: rgba(55, 65, 81, 0.2);
-      border-top-color: #374151;
+    .spinner.light {
+      border-color: rgba(255, 255, 255, 0.28);
+      border-top-color: #fff;
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Result label ──────────────────── */
-    .result-label {
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.625rem;
+    .summary-block,
+    .answer-block,
+    .error-box {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid var(--color-border);
     }
 
-    .mode-tag {
-      padding: 0.15rem 0.5rem;
-      border-radius: 10px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .mode-tag.claims { background: #ede9fe; color: #5b21b6; }
-    .mode-tag.tables { background: #ccfbf1; color: #0f766e; }
-    .mode-tag.section { background: #fef3c7; color: #92400e; }
-
-    /* ── Summary (Feature 3) ───────────── */
-    .summary-area {
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #f3f4f6;
+    .block-heading strong {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      letter-spacing: -0.03em;
     }
 
     .summary-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.625rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin-top: 0.9rem;
     }
 
     .summary-card {
-      border-radius: 10px;
-      padding: 0.875rem;
-      border: 1px solid transparent;
-    }
-
-    .summary-card-title {
-      font-size: 0.8125rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-    }
-
-    .summary-icon {
-      font-size: 0.9rem;
-    }
-
-    .summary-card-body {
-      font-size: 0.875rem;
-      line-height: 1.6;
-      white-space: pre-wrap;
-    }
-
-    .summary-blue { background: #eff6ff; border-color: #bfdbfe; color: #1e3a5f; }
-    .summary-blue .summary-card-title { color: #1d4ed8; }
-
-    .summary-violet { background: #f5f3ff; border-color: #ddd6fe; color: #3b2f6e; }
-    .summary-violet .summary-card-title { color: #6d28d9; }
-
-    .summary-green { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
-    .summary-green .summary-card-title { color: #15803d; }
-
-    .summary-amber { background: #fffbeb; border-color: #fde68a; color: #451a03; }
-    .summary-amber .summary-card-title { color: #92400e; }
-
-    .summary-raw {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
+      position: relative;
       padding: 1rem;
-      font-size: 0.9rem;
+      border-radius: 22px;
+      border: 1px solid transparent;
+      overflow: hidden;
+    }
+
+    .summary-card h3 {
+      margin: 0.65rem 0 0.45rem;
+      font-size: 1rem;
+    }
+
+    .summary-card p {
+      margin: 0;
       line-height: 1.65;
-      white-space: pre-wrap;
-      color: #374151;
+      color: var(--color-ink);
     }
 
-    /* ── Answer + Citations (Feature 2) ── */
-    .answer-area {
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #f3f4f6;
-    }
-
-    .answer-block {
-      margin-bottom: 1.25rem;
-    }
-
-    .answer-text {
-      line-height: 1.65;
-      color: #111827;
-      font-size: 0.9375rem;
-      white-space: pre-wrap;
-    }
-
-    .citations-block {
-      border-top: 1px solid #f3f4f6;
-      padding-top: 1rem;
-    }
-
-    .citation {
-      display: flex;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
-      padding-left: 0.375rem;
-      border-left: 3px solid #e5e7eb;
-    }
-
-    .citation.citation-claim { border-left-color: #a78bfa; }
-    .citation.citation-table { border-left-color: #2dd4bf; }
-
-    .citation:last-child { margin-bottom: 0; }
-
-    .citation-num {
-      width: 22px;
-      height: 22px;
-      background: #eef2ff;
-      color: #6366f1;
-      border-radius: 50%;
-      display: flex;
+    .summary-index {
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.85);
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+
+    .summary-blue {
+      background: rgba(26, 145, 255, 0.12);
+      border-color: rgba(26, 145, 255, 0.18);
+    }
+
+    .summary-amber {
+      background: rgba(236, 168, 46, 0.16);
+      border-color: rgba(165, 106, 24, 0.18);
+    }
+
+    .summary-green {
+      background: rgba(29, 138, 82, 0.12);
+      border-color: rgba(29, 138, 82, 0.18);
+    }
+
+    .summary-rose {
+      background: rgba(252, 92, 44, 0.12);
+      border-color: rgba(252, 92, 44, 0.18);
+    }
+
+    .raw-summary,
+    .answer-text {
+      margin-top: 0.9rem;
+      white-space: pre-wrap;
+      line-height: 1.75;
+      color: var(--color-ink);
+    }
+
+    .answer-meta {
+      margin-top: 0.8rem;
+    }
+
+    .pill,
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(18, 32, 58, 0.07);
+      color: var(--color-muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .tag.claim {
+      background: rgba(252, 92, 44, 0.12);
+      color: var(--color-accent-deep);
+    }
+
+    .tag.table {
+      background: rgba(26, 145, 255, 0.12);
+      color: var(--color-secondary);
+    }
+
+    .citation-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .citation-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 0.9rem;
+      padding: 1rem;
+      border-radius: 22px;
+      background: rgba(248, 248, 248, 0.86);
+      border: 1px solid rgba(18, 32, 58, 0.08);
+    }
+
+    .citation-card.citation-claim {
+      border-color: rgba(252, 92, 44, 0.18);
+    }
+
+    .citation-card.citation-table {
+      border-color: rgba(26, 145, 255, 0.18);
+    }
+
+    .citation-index {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: rgba(18, 32, 58, 0.08);
+      font-family: var(--font-display);
       font-weight: 700;
       flex-shrink: 0;
-      margin-top: 0.1rem;
     }
 
-    .citation-body { flex: 1; min-width: 0; }
-
-    .citation-header {
+    .citation-top {
       display: flex;
-      align-items: center;
-      gap: 0.4rem;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: flex-start;
       flex-wrap: wrap;
-      margin-bottom: 0.25rem;
     }
 
-    .source-name {
-      font-weight: 600;
-      color: #111827;
-      font-size: 0.875rem;
-    }
-
-    .page-tag {
-      font-size: 0.8125rem;
-      color: #6b7280;
-      background: #f3f4f6;
-      padding: 0.1rem 0.4rem;
-      border-radius: 4px;
-    }
-
-    /* Section bucket badges (Feature 1) */
-    .bucket-tag {
-      font-size: 0.7rem;
-      font-weight: 600;
-      padding: 0.15rem 0.45rem;
-      border-radius: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .bucket-problem  { background: #dbeafe; color: #1d4ed8; }
-    .bucket-method   { background: #ede9fe; color: #6d28d9; }
-    .bucket-results  { background: #dcfce7; color: #15803d; }
-    .bucket-limitations { background: #fef3c7; color: #92400e; }
-    .bucket-other    { background: #f3f4f6; color: #6b7280; }
-
-    /* Content type tags (Feature 4 + 5) */
-    .type-tag {
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 0.15rem 0.45rem;
-      border-radius: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .claim-tag { background: #ede9fe; color: #5b21b6; }
-    .table-tag { background: #ccfbf1; color: #0f766e; }
-
-    .doc-id {
-      font-size: 0.75rem;
-      color: #9ca3af;
-      font-family: var(--font-mono, monospace);
-      margin-bottom: 0.3rem;
+    .citation-top strong {
+      font-size: 1rem;
     }
 
     .citation-text {
+      margin: 0.7rem 0 0;
+      color: var(--color-muted);
+      line-height: 1.7;
       font-style: italic;
-      color: #4b5563;
-      line-height: 1.55;
-      font-size: 0.875rem;
     }
 
-    /* ── Error ─────────────────────────── */
-    .error-card {
-      margin-top: 1rem;
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
-      padding: 0.875rem 1rem;
-      background: #fef2f2;
-      border: 1px solid #fca5a5;
-      border-radius: 8px;
-      color: #dc2626;
-      font-size: 0.9375rem;
+    .error-box p {
+      margin: 0;
+      color: var(--color-danger);
+      line-height: 1.65;
     }
 
-    @media (max-width: 640px) {
-      .filters-row { grid-template-columns: 1fr; }
-      .summary-grid { grid-template-columns: 1fr; }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .card {
+        padding: 1.1rem;
+      }
+
+      .card-header,
+      .filter-grid,
+      .summary-grid,
+      .citation-card {
+        grid-template-columns: 1fr;
+      }
+
+      .card-header,
+      .citation-card {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .action-row {
+        flex-direction: column;
+      }
+
+      .primary-btn,
+      .secondary-btn {
+        width: 100%;
+      }
     }
   `]
 })
@@ -791,7 +736,9 @@ export class ChatComponent {
   constructor() {
     effect(() => {
       const id = this.initialDocId();
-      if (id) this.docId = id;
+      if (id) {
+        this.docId = id;
+      }
     });
   }
 
@@ -805,20 +752,62 @@ export class ChatComponent {
     this.tableVariant = '';
   }
 
+  quickPrompts(): string[] {
+    const mode = this.searchMode();
+    if (mode === 'claims') {
+      return [
+        'List the strongest result claims with citations',
+        'What assumptions does the paper rely on?',
+        'Summarize the method claims in plain language'
+      ];
+    }
+
+    if (mode === 'tables') {
+      return [
+        'Extract the key benchmark numbers',
+        'Which table shows the best result?',
+        'Summarize the quantitative findings'
+      ];
+    }
+
+    return [
+      'Summarize the methodology and limitations',
+      'What are the key results with sources?',
+      'Give me a concise executive briefing'
+    ];
+  }
+
+  applyPrompt(prompt: string): void {
+    this.query = prompt;
+  }
+
+  modeHint(): string {
+    const mode = this.searchMode();
+    if (mode === 'claims') return 'Filters retrieval to extracted research claims such as methods, assumptions, and reported results.';
+    if (mode === 'tables') return 'Filters retrieval to extracted tables and quantitative data points.';
+    return 'Searches the general document index and is best for broad paper Q&A.';
+  }
+
   queryPlaceholder(): string {
     const mode = this.searchMode();
-    if (mode === 'claims') return 'Ask about research claims, methods, or assumptions...';
-    if (mode === 'tables') return 'Ask about quantitative results, metrics, or table data...';
-    return 'Ask a question about your documents...';
+    if (mode === 'claims') return 'Ask about methods, assumptions, or reported findings...';
+    if (mode === 'tables') return 'Ask about metrics, tables, or benchmark comparisons...';
+    return 'Ask a citation-grounded question about the uploaded documents...';
+  }
+
+  modePillLabel(): string {
+    if (this.searchMode() === 'claims') return 'Claims mode';
+    if (this.searchMode() === 'tables') return 'Tables mode';
+    return 'General mode';
   }
 
   bucketLabel(bucket: string): string {
     const labels: Record<string, string> = {
       problem: 'Problem',
       method: 'Method',
-      results: 'Key Results',
+      results: 'Results',
       limitations: 'Limitations',
-      other: 'Other',
+      other: 'Other'
     };
     return labels[bucket] ?? bucket;
   }
@@ -826,8 +815,8 @@ export class ChatComponent {
   tableVariantLabel(variant: string): string {
     const labels: Record<string, string> = {
       raw_markdown: 'TABLE',
-      normalized_row: 'ROW',
-      metric_fact: 'METRIC',
+      normalized_row: 'ROWS',
+      metric_fact: 'METRIC'
     };
     return labels[variant] ?? variant.toUpperCase();
   }
@@ -839,19 +828,18 @@ export class ChatComponent {
   }
 
   truncateId(id: string): string {
-    return id.length > 20 ? id.substring(0, 8) + '\u2026' + id.substring(id.length - 4) : id;
+    return id.length > 20 ? `${id.substring(0, 8)}...${id.substring(id.length - 4)}` : id;
   }
 
   parseSummaryText(text: string): SummarySection[] {
-    const definitions: Array<{ key: string; title: string; color: SummarySection['color']; icon: string }> = [
-      { key: 'Problem',      title: 'Problem',      color: 'blue',   icon: '🔍' },
-      { key: 'Method',       title: 'Method',       color: 'violet', icon: '⚙️' },
-      { key: 'Key Results',  title: 'Key Results',  color: 'green',  icon: '📊' },
-      { key: 'Limitations',  title: 'Limitations',  color: 'amber',  icon: '⚠️' },
+    const definitions: Array<{ key: string; title: string; color: SummarySection['color']; index: string }> = [
+      { key: 'Problem', title: 'Problem', color: 'blue', index: '01' },
+      { key: 'Method', title: 'Method', color: 'amber', index: '02' },
+      { key: 'Key Results', title: 'Key Results', color: 'green', index: '03' },
+      { key: 'Limitations', title: 'Limitations', color: 'rose', index: '04' }
     ];
 
-    // Build a regex that splits on **Section** or ## Section headers
-    const headerPattern = definitions.map(d => d.key.replace(' ', '\\s+')).join('|');
+    const headerPattern = definitions.map((definition) => definition.key.replace(' ', '\\s+')).join('|');
     const regex = new RegExp(`(?:\\*\\*|##\\s?)(${headerPattern})(?:\\*\\*)?`, 'gi');
 
     const parts = text.split(regex);
@@ -861,11 +849,18 @@ export class ChatComponent {
     for (let i = 1; i < parts.length; i += 2) {
       const rawTitle = parts[i].trim();
       const content = (parts[i + 1] || '').trim();
-      const def = definitions.find(d => d.key.toLowerCase() === rawTitle.toLowerCase());
-      if (def && content) {
-        sections.push({ title: def.title, content, color: def.color, icon: def.icon });
+      const definition = definitions.find((item) => item.key.toLowerCase() === rawTitle.toLowerCase());
+
+      if (definition && content) {
+        sections.push({
+          title: definition.title,
+          content,
+          color: definition.color,
+          index: definition.index
+        });
       }
     }
+
     return sections;
   }
 
@@ -886,7 +881,7 @@ export class ChatComponent {
       ...(mode === 'claims' && { is_claim: true }),
       ...(mode === 'claims' && this.claimType && { claim_type: this.claimType }),
       ...(mode === 'tables' && { is_table: true }),
-      ...(mode === 'tables' && this.tableVariant && { table_variant: this.tableVariant }),
+      ...(mode === 'tables' && this.tableVariant && { table_variant: this.tableVariant })
     };
 
     this.apiService.chat(request).subscribe({
