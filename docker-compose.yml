@@ -37,8 +37,8 @@ services:
       - .:/app
       - uploads_data:/app/uploads
       # Share torch cache if needed
-      - torch_cache:/root/.cache/torch
-      - huggingface_cache:/root/.cache/huggingface
+      - torch_cache:/home/appuser/.cache/torch
+      - huggingface_cache:/home/appuser/.cache/huggingface
     depends_on:
       - redis
       - qdrant

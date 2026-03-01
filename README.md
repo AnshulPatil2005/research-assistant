@@ -9,7 +9,7 @@ A document question-answering system that extracts text from PDFs using OCR and 
 - **doctr** for OCR text extraction
 - **Qdrant** vector database for semantic search
 - **Sentence Transformers** for generating embeddings (local)
-- **Ollama** (local) or **OpenRouter** (cloud) for LLM inference
+- **OpenRouter** for LLM inference
 - **Angular 17** frontend with standalone components
 
 ### How It Works
@@ -25,7 +25,7 @@ User Query → Embedding Model → Vector search → Top K chunks retrieved
 ```
 
 1. **Embedding Model** (local, free) - Converts text into vectors for semantic search
-2. **LLM Model** (local or cloud) - Generates natural language answers from retrieved context
+2. **LLM Model** (OpenRouter-backed) - Generates natural language answers from retrieved context
 
 ## Research Features
 
@@ -38,8 +38,10 @@ User Query → Embedding Model → Vector search → Top K chunks retrieved
 
 ## Requirements
 
-- Docker & Docker Compose (for backend)
-- Node.js 18+ (for frontend development)
+- Docker & Docker Compose
+- Python 3.11
+- Node.js 18+
+- OpenRouter API key
 - (Optional) Make for build shortcuts
 
 ## Project Structure
@@ -65,145 +67,28 @@ docRAG/
 └── docker-compose.yml
 ```
 
-## Setup
+## Installation
 
-### Backend Configuration
+Use [INSTALLATION.md](INSTALLATION.md) for the full step-by-step setup guide.
 
-Create a `.env` file to configure your models.
+The installation guide covers:
 
-#### LLM Configuration
+- Full-stack startup with Docker
+- Local development with separate terminals
+- PowerShell, Command Prompt, and Bash setup commands
+- Required `.env` values for Docker and non-Docker runs
 
-Choose one of the following LLM providers:
-
-**Option 1: Ollama (Local - Free)**
-
-```env
-LLM_PROVIDER=ollama
-LLM_MODEL=llama3
-```
-
-After starting Docker, pull the model:
-```bash
-docker-compose exec ollama ollama pull llama3
-```
-
-Available Ollama models: `llama3`, `llama3.2`, `mistral`, `codellama`, `phi3`, etc.
-
-**Option 2: OpenRouter (Cloud - Paid)**
-
-```env
-LLM_PROVIDER=openrouter
-LLM_MODEL=google/gemini-2.0-flash-001
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-```
-
-Get your API key at https://openrouter.ai/keys
-
-Popular OpenRouter models:
-- `google/gemini-2.0-flash-001` - Fast and cheap
-- `anthropic/claude-3.5-sonnet` - High quality
-- `meta-llama/llama-3-70b-instruct` - Open source
-- `openai/gpt-4o-mini` - Good balance
-
-See all models at https://openrouter.ai/models
-
-#### Embedding Model Configuration
-
-The embedding model runs locally and is configured via the `EMBEDDING_MODEL` environment variable. Default is `all-MiniLM-L6-v2`.
-
-```env
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-```
-
-To change the embedding model:
-
-1. Update your `.env` file:
-   ```env
-   EMBEDDING_MODEL=all-mpnet-base-v2
-   ```
-
-2. Restart the services:
-   ```bash
-   docker-compose restart api worker
-   ```
-
-3. **Important**: If you change the embedding model after uploading documents, you must re-upload them. Different models produce incompatible vectors.
-
-Available embedding models (from [Sentence Transformers](https://www.sbert.net/docs/pretrained_models.html)):
-
-| Model | Dimensions | Speed | Quality |
-|-------|------------|-------|---------|
-| `all-MiniLM-L6-v2` | 384 | Fast | Good (default) |
-| `all-MiniLM-L12-v2` | 384 | Medium | Better |
-| `all-mpnet-base-v2` | 768 | Slow | Best |
-| `paraphrase-MiniLM-L6-v2` | 384 | Fast | Good for paraphrasing |
-
-#### Complete .env Example
-
-```env
-# LLM Configuration
-LLM_PROVIDER=openrouter          # or "ollama"
-LLM_MODEL=google/gemini-2.0-flash-001
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-
-# Embedding Configuration
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-# Optional: RAG tuning
-RAG_TOP_K=5                      # Number of chunks to retrieve
-SUMMARY_TOP_K_PER_SECTION=8      # Chunks per section family for /summary
-SUMMARY_FALLBACK_TOP_K=15        # Fallback chunks when sections are missing
-CHUNK_TOKENS=500                 # Size of text chunks
-CHUNK_OVERLAP_TOKENS=50          # Overlap between chunks
-```
-
-## Running
-
-### Backend (Docker)
-
-Start all backend services:
+Quick start:
 
 ```bash
-docker-compose up -d --build
+docker compose up --build -d
 ```
 
-This launches:
-- **Redis** - task queue (port 6379)
-- **Qdrant** - vector database (port 6333)
-- **Ollama** - local LLM inference (port 11434) - only used if `LLM_PROVIDER=ollama`
-- **API** - FastAPI backend (port 8000)
-- **Worker** - Celery background processing
+Important notes:
 
-### Frontend (Angular)
-
-#### Local Development
-
-```bash
-cd frontend-angular
-npm install
-npm start
-```
-
-The frontend runs at http://localhost:4200 and connects to the backend at http://localhost:8000.
-
-#### Production Build
-
-```bash
-cd frontend-angular
-npm run build
-```
-
-Output is in `frontend-angular/dist/docrag-frontend/browser/`.
-
-#### Docker (Optional)
-
-Build and run the frontend container:
-
-```bash
-cd frontend-angular
-docker build -t docrag-frontend .
-docker run -p 8080:80 docrag-frontend
-```
+- `LLM_PROVIDER` must be `openrouter`
+- When running the backend outside Docker, set `REDIS_URL=redis://localhost:6379/0`, `QDRANT_URL=http://localhost:6333`, and `UPLOAD_DIR=uploads`
+- The first backend startup downloads the embedding model, so it will be slower than later runs
 
 ## Deployment
 
@@ -336,7 +221,6 @@ View logs:
 ```bash
 docker-compose logs -f api      # API logs
 docker-compose logs -f worker   # Worker logs
-docker-compose logs -f ollama   # LLM logs
 ```
 
 ### Frontend
@@ -354,11 +238,8 @@ Key files:
 
 ## Troubleshooting
 
-### Model not found error
-```
-model 'llama3' not found
-```
-Pull the model: `docker-compose exec ollama ollama pull llama3`
+### Unsupported LLM provider
+If startup fails with an error saying only `openrouter` is supported, update `.env` so `LLM_PROVIDER=openrouter`.
 
 ### API shows "Offline" in frontend
 - Check containers are running: `docker-compose ps`

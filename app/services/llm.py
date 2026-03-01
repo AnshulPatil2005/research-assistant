@@ -17,6 +17,8 @@ class LLMClient:
             return self.client
 
         if self.provider == "openrouter":
+            if not settings.OPENROUTER_API_KEY:
+                raise ValueError("OPENROUTER_API_KEY is not set. Please add it to your .env file.")
             self.client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=settings.OPENROUTER_API_KEY,

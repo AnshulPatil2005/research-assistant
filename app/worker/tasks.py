@@ -102,5 +102,5 @@ def process_pdf_task(self, doc_id: str, file_path: str, ocr_mode: str = "auto"):
         
     except Exception as e:
         logger.error(f"Error processing PDF: {e}")
-        # self.retry(exc=e, countdown=2 ** self.request.retries)
+        self.retry(exc=e, countdown=2 ** self.request.retries)
         raise e
